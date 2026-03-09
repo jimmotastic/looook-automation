@@ -22,12 +22,12 @@ class PoolRefresher:
         self.fetcher_script = Path(__file__).parent / 'pinterest_fetcher.py'
 
     def run(self, dry_run: bool = False) -> bool:
-        logger.info("\u{1F504} LOOOOK Pool Refresh Started")
+        logger.info("LOOOOK Pool Refresh Started")
         logger.info(f"  Board: {self.board_url}")
         logger.info(f"  Mode: {'DRY RUN' if dry_run else 'LIVE'}")
 
         # Fetch images
-        logger.info("\n[1/3] Fetching all images from Pinterest...")
+        logger.info("[1/3] Fetching all images from Pinterest...")
         try:
             result = subprocess.run(
                 ['python3', str(self.fetcher_script), '--board-url', self.board_url, '--output', 'images.json'],
@@ -43,10 +43,10 @@ class PoolRefresher:
             logger.error(f"Fetch error: {e}")
             return False
 
-        logger.info(f"\u2713 Fetched {len(images)} images")
+        logger.info(f"Fetched {len(images)} images")
 
         # Process to POOL format
-        logger.info("\n[2/3] Processing into POOL format...")
+        logger.info("[2/3] Processing into POOL format...")
         pool = []
         for idx, img in enumerate(images):
             cycle = idx % 10
@@ -57,10 +57,10 @@ class PoolRefresher:
                 'category': img.get('category', 'inspiration'),
                 'alt': img.get('alt', 'LOOOOK mood board')
             })
-        logger.info(f"\u2713 Processed {len(pool)} images")
+        logger.info(f"Processed {len(pool)} images")
 
         # Update HTML
-        logger.info("\n[3/3] Updating HTML...")
+        logger.info("[3/3] Updating HTML...")
         try:
             html = self.html_file.read_text(encoding='utf-8')
 
@@ -74,21 +74,21 @@ class PoolRefresher:
     }}''')
 
             pool_js = f"""const POOL = [
-{','.join(items)}
+{',' .join(items)}
 ];"""
 
             new_html = re.sub(r'const POOL = \[[\s\S]*?\];', pool_js, html)
 
             if not dry_run:
                 self.html_file.write_text(new_html, encoding='utf-8')
-                logger.info(f"\u2713 Wrote {self.html_file}")
+                logger.info(f"Wrote {self.html_file}")
             else:
-                logger.info("\u2713 DRY RUN - skipping write")
+                logger.info("DRY RUN - skipping write")
         except Exception as e:
             logger.error(f"HTML error: {e}")
             return False
 
-        logger.info("\n\u2705 Pool refresh complete!")
+        logger.info("Pool refresh complete!")
         return True
 
 
@@ -102,7 +102,7 @@ def main():
 
     board_url = args.board_url or os.getenv('PINTEREST_BOARD_URL')
     if not board_url:
-        logger.error("\u274C Pinterest board URL required")
+        logger.error("Pinterest board URL required")
         sys.exit(1)
 
     refresher = PoolRefresher(board_url, args.html_file)
