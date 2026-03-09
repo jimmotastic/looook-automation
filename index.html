@@ -1,46 +1,76 @@
 <!DOCTYPE html>
 <html>
-<head><title>L O O O O K</title><style>body{margin:0;font-family:Arial;background:#fff}.site-header{padding:30px}.grid{padding:140px 30px 0;columns:3;gap:60px}.grid-item{break-inside:avoid;margin-bottom:80px;cursor:pointer}.grid-item img{width:100%;opacity:0;transition:opacity 0.8s}.grid-item img.loaded{opacity:1}.overlay{position:fixed;inset:0;background:#fff;z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.3s}.overlay.active{opacity:1;pointer-events:all}.overlay img{max-width:90vw;max-height:88vh;object-fit:contain}</style></head>
+  <head><title>L O O O O K</title><style>body{margin:0;font-family:Arial;background:#fff}*{box-sizing:border-box}.site-header{padding:30px;position:fixed;top:0;left:0;right:0;background:#fff;z-index:100}.grid{padding:120px 30px 60px;columns:3;gap:50px}.grid-item{break-inside:avoid;margin-bottom:60px;cursor:pointer;opacity:0;transform:translateY(30px);transition:opacity 0.8s ease,transform 0.6s ease}.grid-item.visible{opacity:1;transform:translateY(0)}.grid-item img{width:100%;display:block;opacity:0;transition:opacity 0.8s}.grid-item img.loaded{opacity:1}.overlay{position:fixed;inset:0;background:#fff;z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.3s}.overlay.active{opacity:1;pointer-events:all}.overlay img{max-width:90vw;max-height:88vh;object-fit:contain}#sentinel{height:1px;width:100%}@media(max-width:800px){.grid{columns:2;gap:30px;padding:100px 16px 40px}.grid-item{margin-bottom:36px}}</style></head>
 <body>
-<header class="site-header"><h1>L O O O O K</h1></header>
-<main class="grid" id="grid"></main>
-<div class="overlay" id="overlay" onclick="closeOverlay()"><img id="overlay-img"></div>
+  <header class="site-header"><h1>L O O O O K</h1></header>header>
+<main class="grid" id="grid"></main>main>
+<div id="sentinel"></div>div>
+<div class="overlay" id="overlay" onclick="closeOverlay()"><img id="overlay-img"></div>div>
 <script>
-const POOL = [
-  { src: "https://i.pinimg.com/736x/68/46/f9/6846f94d63a51021e36749b7b80132aa.jpg", meta: "REF_001", size: "l" },
-  { src: "https://i.pinimg.com/736x/33/d4/01/33d4018cee6fa9f4c65d3940b2bc871f.jpg", meta: "REF_002", size: "m" },
-  { src: "https://i.pinimg.com/736x/38/4d/dc/384ddc5c6db68aa7aa0fcedbd05d4e14.jpg", meta: "REF_003", size: "s" },
-  { src: "https://i.pinimg.com/736x/f2/7a/44/f27a445a76040ad426624b3ef9419602.jpg", meta: "REF_004", size: "l" },
-  { src: "https://i.pinimg.com/736x/8a/cf/14/8acf14df8bbede0f120b295a47d215cc.jpg", meta: "REF_005", size: "m" },
-
-];
-const today = new Date();
-const daySeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-function shuffle(arr, seed) {
-  const shuffled = arr.slice();
-  let s = seed;
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    s = (s * 16807) % 2147483647;
-    const j = Math.floor((s / 2147483647) * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  const POOL = [
+    { src: "https://i.pinimg.com/736x/68/46/f9/6846f94d63a51021e36749b7b80132aa.jpg", meta: "REF_001", size: "l" },
+    { src: "https://i.pinimg.com/736x/33/d4/01/33d4018cee6fa9f4c65d3940b2bc871f.jpg", meta: "REF_002", size: "m" },
+    { src: "https://i.pinimg.com/736x/38/4d/dc/384ddc5c6db68aa7aa0fcedbd05d4e14.jpg", meta: "REF_003", size: "s" },
+    { src: "https://i.pinimg.com/736x/f2/7a/44/f27a445a76040ad426624b3ef9419602.jpg", meta: "REF_004", size: "l" },
+    { src: "https://i.pinimg.com/736x/8a/cf/14/8acf14df8bbede0f120b295a47d215cc.jpg", meta: "REF_005", size: "m" },
+    ];
+  let batchIndex = 0;
+  let loading = false;
+  const grid = document.getElementById('grid');
+  function shuffle(arr, seed) {
+      const s = arr.slice();
+      let r = seed;
+      for (let i = s.length - 1; i > 0; i--) {
+            r = (r * 16807) % 2147483647;
+            const j = Math.floor((r / 2147483647) * (i + 1));
+            [s[i], s[j]] = [s[j], s[i]];
+      }
+      return s;
   }
-  return shuffled;
-}
-const shuffled = shuffle(POOL, daySeed);
-const grid = document.getElementById('grid');
-shuffled.forEach(item => {
-  const div = document.createElement('div');
-  div.className = 'grid-item size-' + item.size;
-  div.innerHTML = '<img src="' + item.src + '" onload="this.classList.add(\'loaded\')" onclick="openOverlay(\'' + item.src + '\')"><div>' + item.meta + '</div>';
-  grid.appendChild(div);
-});
-function openOverlay(src) {
-  document.getElementById('overlay-img').src = src;
-  document.getElementById('overlay').classList.add('active');
-}
-function closeOverlay() {
-  document.getElementById('overlay').classList.remove('active');
-}
+  function loadBatch() {
+      if (loading || POOL.length === 0) return;
+      loading = true;
+      const today = new Date();
+      const daySeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+      const seed = daySeed + batchIndex * 7919;
+      const batch = shuffle(POOL, seed);
+      batch.forEach((item, i) => {
+            const div = document.createElement('div');
+            div.className = 'grid-item size-' + item.size;
+            const img = document.createElement('img');
+            img.src = item.src;
+            img.alt = item.alt || 'LOOOOK';
+            img.onload = function() { this.classList.add('loaded'); };
+            img.onclick = function() { openOverlay(item.src); };
+            div.appendChild(img);
+            grid.appendChild(div);
+            setTimeout(() => {
+                    const obs = new IntersectionObserver((entries) => {
+                              entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+                    }, { threshold: 0.1 });
+                    obs.observe(div);
+            }, 50);
+      });
+      batchIndex++;
+      loading = false;
+  }
+  loadBatch();
+  loadBatch();
+  const sentinel = document.getElementById('sentinel');
+  const io = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) loadBatch();
+  }, { rootMargin: '600px' });
+  io.observe(sentinel);
+  function openOverlay(src) {
+      document.getElementById('overlay-img').src = src;
+      document.getElementById('overlay').classList.add('active');
+  }
+  function closeOverlay() {
+      document.getElementById('overlay').classList.remove('active');
+  }
 </script>
 </body>
+</html>
+</script></h1>
+</body></style></title></head>
 </html>
