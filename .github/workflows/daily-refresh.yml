@@ -1,8 +1,8 @@
-name: Daily Pool Refresh
+name: Pool Refresh (48h)
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 */2 * *'
   workflow_dispatch:
 
 jobs:
@@ -28,9 +28,11 @@ jobs:
       - name: Run pool refresh
         env:
           PINTEREST_BOARD_URL: ${{ secrets.PINTEREST_BOARD_URL }}
+                    ARCHIVE_URL: https://jjjj-image-library.com/
         run: |
           python scripts/refresh_pool.py \
             --board-url "$PINTEREST_BOARD_URL" \
+            --archive-url "$ARCHIVE_URL" \            
             --html-file "index.html"
 
       - name: Commit and push
