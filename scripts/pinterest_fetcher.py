@@ -1,111 +1,186 @@
 #!/usr/bin/env python3
 """
-Pinterest Image Fetcher - Extracts all images from a Pinterest board using Playwright.
+Pinterest Image Fetcher - Extracts images from a Pinterest board.
+Uses Pinterest's RSS feed first, falls back to requests-based scraping.
 """
 import json
+import re
 import sys
 import time
 from pathlib import Path
 from typing import List, Dict
 import logging
 import argparse
+import requests
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:
-    logger.error("Playwright not installed. Run: pip install playwright")
-    sys.exit(1)
 
 
 class PinterestFetcher:
     def __init__(self, board_url: str, headless: bool = True):
         self.board_url = board_url.rstrip('/')
         self.headless = headless
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        })
 
     def fetch_images(self) -> List[Dict]:
         logger.info(f"Fetching images from {self.board_url}")
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
-            page = browser.new_page()
-            page.set_viewport_size({"width": 1200, "height": 800})
+        # Try RSS feed first
+        images = self._fetch_via_rss()
+        if images:
+            logger.info(f"RSS: Got {len(images)} images")
+            return images
 
-            try:
-                page.goto(self.board_url, wait_until="networkidle", timeout=30000)
-                logger.info("Page loaded")
+        # Try requests-based HTML scraping
+        images = self._fetch_via_requests()
+        if images:
+            logger.info(f"Requests: Got {len(images)} images")
+            return images
 
-                # Scroll to load all images
-                self._scroll_and_load(page)
-                images = self._extract_images(page)
+        # Fall back to Playwright
+        images = self._fetch_via_playwright()
+        logger.info(f"Playwright: Got {len(images)} images")
+        return images
 
-                logger.info(f"Extracted {len(images)} images")
-                browser.close()
-                return images
-            except Exception as e:
-                logger.error(f"Error: {e}")
-                browser.close()
+    def _fetch_via_rss(self) -> List[Dict]:
+        """Fetch via Pinterest RSS feed."""
+        try:
+            rss_url = self.board_url.rstrip('/') + '.rss'
+            logger.info(f"Trying RSS: {rss_url}")
+            resp = self.session.get(rss_url, timeout=30)
+            if resp.status_code != 200:
+                logger.info(f"RSS returned {resp.status_code}")
                 return []
 
-    def _scroll_and_load(self, page):
-        logger.info("Scrolling to load images...")
-        previous_count = 0
-        no_new_count = 0
-
-        for attempt in range(20):
-            current = len(page.query_selector_all('img[src*="pinimg"]'))
-            logger.info(f"  Scroll {attempt + 1}: {current} images")
-
-            if current == previous_count:
-                no_new_count += 1
-                if no_new_count >= 2:
-                    logger.info(f"Reached bottom: {current} images")
-                    break
-            else:
-                no_new_count = 0
-
-            previous_count = current
-            page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
-            time.sleep(1)
-
-    def _extract_images(self, page) -> List[Dict]:
-        images = []
-        img_elements = page.query_selector_all('img[src*="pinimg"]')
-        logger.info(f"Found {len(img_elements)} image elements")
-
-        for img in img_elements:
-            try:
-                src = img.get_attribute('src')
-                if not src or 'placeholder' in src.lower():
+            images = []
+            img_pattern = re.compile(r'<img[^>]+src="([^"]*pinimg[^"]*)"')
+            for match in img_pattern.finditer(resp.text):
+                src = match.group(1)
+                if 'placeholder' in src.lower():
                     continue
-
-                # Get higher quality versions
-                if '236x' in src:
-                    src = src.replace('236x', '564x')
-                elif '474x' in src:
-                    src = src.replace('474x', '1200x')
-
+                src = src.replace('236x', '564x').replace('474x', '1200x')
                 images.append({
                     'src': src,
-                    'alt': img.get_attribute('alt') or 'Pinterest image',
+                    'alt': 'Pinterest image',
                     'width': 400,
                     'height': 400,
                     'category': 'inspiration'
                 })
-            except:
-                continue
 
-        # Remove duplicates
-        seen = set()
-        unique = []
-        for img in images:
-            if img['src'] not in seen:
-                seen.add(img['src'])
-                unique.append(img)
+            # Deduplicate
+            seen = set()
+            unique = []
+            for img in images:
+                if img['src'] not in seen:
+                    seen.add(img['src'])
+                    unique.append(img)
+            return unique
+        except Exception as e:
+            logger.info(f"RSS failed: {e}")
+            return []
 
-        return unique
+    def _fetch_via_requests(self) -> List[Dict]:
+        """Fetch via direct HTTP requests with Pinterest's internal API."""
+        try:
+            logger.info("Trying requests-based fetch...")
+            resp = self.session.get(self.board_url, timeout=30)
+            if resp.status_code != 200:
+                logger.info(f"Page returned {resp.status_code}")
+                return []
+
+            images = []
+            # Look for pinimg URLs in the page source
+            img_pattern = re.compile(r'https://i\.pinimg\.com/[^"\\]+\.(?:jpg|png|webp)')
+            for match in img_pattern.finditer(resp.text):
+                src = match.group(0)
+                if 'placeholder' in src.lower() or '75x75' in src:
+                    continue
+                src = src.replace('236x', '564x').replace('474x', '1200x')
+                images.append({
+                    'src': src,
+                    'alt': 'Pinterest image',
+                    'width': 400,
+                    'height': 400,
+                    'category': 'inspiration'
+                })
+
+            # Deduplicate
+            seen = set()
+            unique = []
+            for img in images:
+                if img['src'] not in seen:
+                    seen.add(img['src'])
+                    unique.append(img)
+            return unique
+        except Exception as e:
+            logger.info(f"Requests failed: {e}")
+            return []
+
+    def _fetch_via_playwright(self) -> List[Dict]:
+        """Fall back to Playwright with stealth settings."""
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            logger.error("Playwright not installed")
+            return []
+
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=self.headless)
+                context = browser.new_context(
+                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    viewport={'width': 1200, 'height': 800},
+                    locale='en-US',
+                )
+                page = context.new_page()
+
+                # Block unnecessary resources
+                page.route('**/*.{woff,woff2,ttf,otf}', lambda route: route.abort())
+
+                page.goto(self.board_url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(5000)
+
+                # Scroll to load images
+                for _ in range(10):
+                    page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
+                    page.wait_for_timeout(1500)
+
+                # Extract images
+                images = []
+                content = page.content()
+                img_pattern = re.compile(r'https://i\.pinimg\.com/[^"\\]+\.(?:jpg|png|webp)')
+                for match in img_pattern.finditer(content):
+                    src = match.group(0)
+                    if 'placeholder' in src.lower() or '75x75' in src:
+                        continue
+                    src = src.replace('236x', '564x').replace('474x', '1200x')
+                    images.append({
+                        'src': src,
+                        'alt': 'Pinterest image',
+                        'width': 400,
+                        'height': 400,
+                        'category': 'inspiration'
+                    })
+
+                browser.close()
+
+                # Deduplicate
+                seen = set()
+                unique = []
+                for img in images:
+                    if img['src'] not in seen:
+                        seen.add(img['src'])
+                        unique.append(img)
+                return unique
+        except Exception as e:
+            logger.error(f"Playwright error: {e}")
+            return []
 
 
 def main():
