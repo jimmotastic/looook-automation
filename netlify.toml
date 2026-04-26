@@ -1,0 +1,19 @@
+# Looook.today - Auto-deploy configuration
+
+[build]
+  # No build command needed - static HTML
+  publish = "."
+  
+[build.environment]
+  # No environment variables needed for static site
+
+[[headers]]
+  # Cache busting headers (from existing _headers file)
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
